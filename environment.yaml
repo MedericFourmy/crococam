@@ -1,0 +1,16 @@
+
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - pinocchio
+  - crocoddyl>=2.0.0
+  - example-robot-data
+  - pybullet
+  - gepetto-viewer
+  - gepetto-viewer-corba
+  - pip:
+    - numpy
+    - pandas
+    - matplotlib

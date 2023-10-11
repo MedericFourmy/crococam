@@ -1,10 +1,10 @@
 crococam
 ==================
 
-Tooling and examples for vision based MPC.
+Sandbox for vision based MPC.
 
 TODOLIST:
-- MPC control reaching target simulated in pybullet  
+- Moveable target in MPC with visual
 - Retrieving data from eye-in-hand cam  
-- Image based residuals  
+- Image based residuals + bindings
 - olt feedback  
