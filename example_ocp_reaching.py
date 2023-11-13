@@ -21,7 +21,8 @@ from robot_utils import create_panda
 GVIEWER = True
 PLOT = True
 
-DELTA_TRANS = np.array([-0.20, -0.3, 0.1])
+# DELTA_TRANS = np.array([-0.20, -0.3, 0.1])
+DELTA_TRANS = np.array([-0.80, -0.35, -0.5])  # puts itself in limit
 
 robot = create_panda()
 
@@ -29,7 +30,9 @@ robot = create_panda()
 cfg = ConfigOCP
 cfg.ee_name = 'panda_hand'
 cfg.w_frame_running = 10
-cfg.T = 60
+cfg.w_joint_limits_running = 1000.0
+cfg.w_joint_limits_terminal = 1000.0
+cfg.T = 100
 cfg.dt = 1e-2  # seconds
 ocp = OCP(robot.model, cfg)
 
@@ -40,7 +43,9 @@ x0 = np.concatenate([robot.q0, np.zeros(robot.model.nv)])
 xs_init, us_init = ocp.quasistatic_init(x0)
 ocp.set_ee_placement_ref(oMe_goal)
 ocp.set_state_reg_ref(x0)
-ocp.ddp.solve(xs_init, us_init, maxiter=10, is_feasible=False)
+ocp.ddp.problem.x0 = x0
+ocp.ddp.solve(xs_init, us_init, maxiter=50, is_feasible=False)
+print("Iteration #:", ocp.ddp.iter)
 
 
 if GVIEWER:
@@ -80,6 +85,8 @@ if PLOT:
         colors=["b"],
         sampling_plot=1,
         SHOW=False,
+        x_limits_lower=ocp.x_limits_lower,
+        x_limits_upper=ocp.x_limits_upper,
     )
 
     ocp_utils.plot_ocp_state(ddp_data, fig_d['x'], axes_d['x'])

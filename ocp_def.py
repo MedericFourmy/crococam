@@ -25,6 +25,10 @@ class ConfigOCP:
     diag_u_reg_running = np.ones(7)
     armature_scale = 0.0  # creates instabilities
 
+    # Joint limits
+    w_joint_limits_running = 0.0
+    w_joint_limits_terminal = 0.0
+
     ee_name = 'panda_hand'
 
     # Number of shooting nodes
@@ -63,6 +67,12 @@ class OCP:
         state = croc.StateMultibody(self.model)
         actuation = croc.ActuationModelFull(state)
 
+        # Bounds
+        self.x_limits_lower = np.concatenate([model.lowerPositionLimit, -model.velocityLimit])
+        self.x_limits_upper = np.concatenate([model.upperPositionLimit,  model.velocityLimit])
+        print('self.x_limits_lower:',self.x_limits_lower)
+        print('self.x_limits_upper:',self.x_limits_upper)
+        bounds = croc.ActivationBounds(self.x_limits_lower, self.x_limits_upper, beta=1)
         ###################
         # Create cost terms
 
@@ -88,18 +98,23 @@ class OCP:
 
             # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
             xRegCost = croc.CostModelResidual(state, 
-                                                croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
-                                                croc.ResidualModelState(state, x0_dummy, actuation.nu))
+                                              croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
+                                              croc.ResidualModelState(state, x0_dummy, actuation.nu))
 
             # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
             uRegCost = croc.CostModelResidual(state, 
-                                                croc.ActivationModelWeightedQuad(cfg.diag_u_reg_running**2), 
-                                                croc.ResidualModelControlGrav(state, actuation.nu))
+                                              croc.ActivationModelWeightedQuad(cfg.diag_u_reg_running**2), 
+                                              croc.ResidualModelControlGrav(state, actuation.nu))
 
+            # Joint limits cost
+            jointLimitCost = croc.CostModelResidual(state, 
+                                                    croc.ActivationModelQuadraticBarrier(bounds), 
+                                                    croc.ResidualModelState(state, actuation.nu))
 
             runningCostModel.addCost('stateReg', xRegCost, cfg.w_x_reg_running)
             runningCostModel.addCost('ctrlRegGrav', uRegCost, cfg.w_u_reg_running)
             runningCostModel.addCost('placement', frameGoalCost, cfg.w_frame_running)
+            runningCostModel.addCost('jointLimit', jointLimitCost, cfg.w_joint_limits_running)
             # Create Differential Action Model (DAM), i.e. continuous dynamics and cost functions
             running_DAM = croc.DifferentialActionModelFreeFwdDynamics(
                 state, actuation, runningCostModel
@@ -125,8 +140,14 @@ class OCP:
         #                                         croc.ActivationModelWeightedQuad(diag_vel_terminal**2), 
         #                                         croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
 
+        # Joint limits cost
+        jointLimitCost = croc.CostModelResidual(state, 
+                                                croc.ActivationModelQuadraticBarrier(bounds), 
+                                                croc.ResidualModelState(state, actuation.nu))
+
         terminalCostModel.addCost('stateReg', xRegCost, cfg.dt*cfg.w_x_reg_terminal)
         terminalCostModel.addCost('placement', frameGoalCost, cfg.dt*cfg.w_frame_terminal)
+        terminalCostModel.addCost('jointLimit', jointLimitCost, cfg.dt*cfg.w_joint_limits_terminal)
         # terminalCostModel.addCost('terminal_vel', frameVelCost, cfg.dt*cfg.w_frame_vel_terminal)
 
 

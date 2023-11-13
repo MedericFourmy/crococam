@@ -103,7 +103,7 @@ def extract_ocp_data(ddp, ee_frame_name='contact', ct_frame_name='contact'):
 
 
 # Plot from DDP solver 
-def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, colors=None, sampling_plot=1, SHOW=False):
+def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, colors=None, sampling_plot=1, SHOW=False, x_limits_lower=None, x_limits_upper=None):
     '''
     Plot ddp results from 1 or several DDP solvers
         X, U, EE trajs
@@ -127,7 +127,7 @@ def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, col
         if(k==0):
             if('x' in which_plots or which_plots =='all' or 'all' in which_plots):
                 if('xs' in data.keys()):
-                    fig_x, ax_x = plot_ocp_state(data, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False)
+                    fig_x, ax_x = plot_ocp_state(data, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False, x_limits_lower=x_limits_lower, x_limits_upper=x_limits_upper)
             if('u' in which_plots or which_plots =='all' or 'all' in which_plots):
                 if('us' in data.keys()):
                     fig_u, ax_u = plot_ocp_control(data, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False)
@@ -142,7 +142,7 @@ def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, col
             if(k%sampling_plot==0):
                 if('x' in which_plots or which_plots =='all' or 'all' in which_plots):
                     if('xs' in data.keys()):
-                        plot_ocp_state(data, fig=fig_x, ax=ax_x, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False)
+                        plot_ocp_state(data, fig=fig_x, ax=ax_x, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False, x_limits_lower=x_limits_lower, x_limits_upper=x_limits_upper)
                 if('u' in which_plots or which_plots =='all' or 'all' in which_plots):
                     if('us' in data.keys()):
                         plot_ocp_control(data, fig=fig_u, ax=ax_u, label=labels[k], marker=markers[k], color=colors[k], MAKE_LEGEND=make_legend, SHOW=False)
@@ -179,7 +179,7 @@ def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, col
 
     return fig, ax
 
-def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., MAKE_LEGEND=False, SHOW=True):
+def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., MAKE_LEGEND=False, SHOW=True, x_limits_lower=None, x_limits_upper=None):
     '''
     Plot ddp results (state)
     '''
@@ -214,6 +214,13 @@ def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=N
                 ax[i,0].lines[labels.index('reg_ref')].remove()
                 labels.remove('reg_ref')
             ax[i,0].plot(tspan, x_reg_ref[:,i], linestyle='-.', color='k', marker=None, label='reg_ref', alpha=0.5)
+
+        # plot joint configuration limits
+        if x_limits_lower is not None:
+            ax[i,0].axhline(x_limits_lower[i], tspan[0], tspan[-1], linestyle='-.', color='r', marker=None, label='lb', alpha=0.5)
+        if x_limits_upper is not None:
+            ax[i,0].axhline(x_limits_upper[i], tspan[0], tspan[-1], linestyle='-.', color='r', marker=None, label='uqqb', alpha=0.5)
+
         ax[i,0].set_ylabel('$q_%s$'%i, fontsize=16)
         ax[i,0].yaxis.set_major_locator(plt.MaxNLocator(2))
         ax[i,0].yaxis.set_major_formatter(plt.FormatStrFormatter('%.2e'))
@@ -231,6 +238,12 @@ def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=N
                 labels.remove('reg_ref')
             ax[i,1].plot(tspan, x_reg_ref[:,nq+i], linestyle='-.', color='k', marker=None, label='reg_ref', alpha=0.5)
         
+        # plot joint velocities limits
+        if x_limits_lower is not None:
+            ax[i,1].axhline(x_limits_lower[nq+i], tspan[0], tspan[-1], linestyle='-.', color='r', marker=None, label='lb', alpha=0.5)
+        if x_limits_upper is not None:
+            ax[i,1].axhline(x_limits_upper[nq+i], tspan[0], tspan[-1], linestyle='-.', color='r', marker=None, label='ub', alpha=0.5)
+
         # Labels, tick labels and grid
         ax[i,1].set_ylabel('$v_%s$'%i, fontsize=16)
         ax[i,1].yaxis.set_major_locator(plt.MaxNLocator(2))

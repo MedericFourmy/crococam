@@ -18,10 +18,10 @@ class SimuProxy:
     def __init__(self):
         self.readyForSimu = False
 
-    def init(self, dt_sim: float, robot_name: str, fixed_joint_names: list[str] = None, visual: bool = True):
+    def init(self, dt_sim: float, robot_name: str, fixed_joint_names: list[str] = None, visual: bool = True, disable_joint_limits: bool = False):
         self.loadRobotFromErd(robot_name)
         pyb_mode = pyb.GUI if visual else pyb.DIRECT
-        self.loadBulletModel(dt_sim, guiOpt=pyb_mode)
+        self.loadBulletModel(dt_sim, pyb_mode, disable_joint_limits)
         if fixed_joint_names is not None:
             self.freeze(fixed_joint_names)
         
@@ -61,7 +61,7 @@ class SimuProxy:
     ################################################################################
     ################################################################################
     # Load bullet model
-    def loadBulletModel(self, dt_sim, guiOpt=pyb.DIRECT):
+    def loadBulletModel(self, dt_sim, guiOpt=pyb.DIRECT, disable_joint_limits=True):
 
         self.bulletClient = pyb.connect(guiOpt)
 
@@ -91,6 +91,15 @@ class SimuProxy:
             self.localInertiaPos = pyb.getDynamicsInfo(self.robotId, -1)[3]
 
         self.setBulletFinalizationTrics()
+
+        if disable_joint_limits:
+            for idx in self.bullet_names2indices.values():
+                pyb.changeDynamics(
+                    self.robotId,
+                    idx,
+                    jointLowerLimit=-1000,
+                    jointUpperLimit=1000,
+                )
 
         nq_minus_nqa = 7 if self.free_flyer else 0 
         for ipin, ibul in enumerate(self.bulletCtrlJointsInPinOrder):

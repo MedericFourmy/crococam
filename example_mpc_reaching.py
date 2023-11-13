@@ -23,6 +23,7 @@ robot = create_panda()
 
 # Simulation
 SIM_SLEEP = False
+DISABLE_JOINT_LIMITS = False
 N_SIM = 10000
 # DT_SIM = 1/240  # pybullet default
 DT_SIM = 1/1000
@@ -34,6 +35,8 @@ cfg = ConfigOCP
 cfg.ee_name = 'panda_hand'
 cfg.w_frame_terminal = 10
 cfg.w_frame_running = 1
+cfg.w_joint_limits_running = 1000.0
+cfg.w_joint_limits_terminal = 1000.0
 
 cfg.T = 50
 cfg.dt = 2e-2  # seconds
@@ -46,20 +49,13 @@ SOLVE_EVERY = int(DT_DDP_SOLVE/DT_SIM)
 MAX_ITER = 30
 print('SOLVE_EVERY', SOLVE_EVERY)
 
-
-# franka_control/config/start_pose.yaml
-v0 = np.zeros(robot.nv)
-x0 = np.concatenate([robot.q0, v0])
-
 ee_fid = robot.model.getFrameId(cfg.ee_name)
 oMe0 = robot.framePlacement(robot.q0, ee_fid)  # FK
 oMe_goal = oMe0.copy()
 oMe_goal.translation += DELTA_TRANS
 
-
-# Warm start : initial state + gravity compensation
-xs_init = (cfg.T + 1)*[x0]
-us_init = ocp.ddp.problem.quasiStatic(xs_init[:-1])
+x0 = np.concatenate([robot.q0, np.zeros(robot.model.nv)])
+xs_init, us_init = ocp.quasistatic_init(x0)
 ocp.set_ee_placement_ref(oMe_goal)
 ocp.set_state_reg_ref(x0)
 # Initial solution
@@ -69,7 +65,7 @@ fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 
 # Simulation
 sim = SimuProxy()
-sim.init(DT_SIM, 'panda', fixed_joints, visual=True)
+sim.init(DT_SIM, 'panda', fixed_joints, visual=True, disable_joint_limits=DISABLE_JOINT_LIMITS)
 sim.setState(x0)
 
 # Visualization of mpc preview
