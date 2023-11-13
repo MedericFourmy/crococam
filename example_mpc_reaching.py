@@ -73,7 +73,7 @@ sim.init(DT_SIM, 'panda', fixed_joints, visual=True)
 sim.setState(x0)
 
 # Visualization of mpc preview
-# gmpc = GviewerMpc('panda', fixed_joints, nb_keyframes=4)
+gmpc = GviewerMpc('panda', fixed_joints, nb_keyframes=4)
 
 # Force disturbance
 t1_fext, t2_fext = 1.0, 4.0
@@ -128,7 +128,7 @@ for k in range(N_SIM):
         dt_solve.append(1e3*(time.time() - t1))  # store milliseconds
         nb_iter_solve.append(ocp.ddp.iter)
 
-    # gmpc.display_keyframes(np.array(ocp.ddp.xs)[:,:robot.nq])
+    gmpc.display_keyframes(np.array(ocp.ddp.xs)[:,:robot.nq])
 
     # Simulate external force
     if t1_fext < tk < t2_fext:

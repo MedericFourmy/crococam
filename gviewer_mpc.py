@@ -30,17 +30,11 @@ class GviewerMpc:
             viz.initViewer(loadModel=True, sceneName=f'world/preview_{i}')
             self.vizs.append(viz)
 
-        # all viz variables point to the smae gui object, why not use the last one
-        self.gv = viz.viewer.gui
+        # all viz variables point to the same gui object, e.g. we can use the last one 
+        self.gui = viz.viewer.gui
 
-        # change color and transparency of preview robots using there name in the scene graph
-        colors = np.linspace(color_start, color_end, nb_keyframes)
-        for node in self.gv.getNodeList():
-            for i in range(nb_keyframes):
-                if f'/preview_{i}' in node:
-                    self.gv.setColor(node, colors[i].tolist())
         self.display(self.nb_keyframes*[r.q0])
-        self.gv.refresh()
+        self.gui.refresh()
 
     def display(self, q_lst):
         # Select q at relugar intervals of the traj and call viz.display on them
