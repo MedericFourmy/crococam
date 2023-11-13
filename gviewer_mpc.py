@@ -5,9 +5,8 @@ from pinbullet import freezed_robot
 
 class GviewerMpc:
 
-    def __init__(self, robot_name, nb_keyframes, fixed_joints=None, color_start=[1, 0, 0, 0.2], color_end=[0, 1, 0, 0.2]) -> None:
-
-        assert (nb_keyframes > 0)
+    def __init__(self, robot_name: str, fixed_joints: list[str] = None, nb_keyframes: int = 3, color_start=[1, 0, 0, 0.2], color_end=[0, 1, 0, 0.2]) -> None:
+        assert nb_keyframes > 0 
         self.nb_keyframes = nb_keyframes
 
         robot = load(robot_name)

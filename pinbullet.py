@@ -11,43 +11,14 @@ import pybullet as pyb
 import pybullet_data
 import numpy as np
 import example_robot_data as robex
-
-
-
-def freezed_robot(robot, fixed_joints):
-    """
-    Return a robot wrapper with reduced set of joints with respect to full model.
-
-    Useful to fix joints before starting the simulations.
-    """
-
-    q0_full = robot.q0
-
-    # Remove some joints from pinocchio model
-    fixed_jids = [robot.model.getJointId(jname) for jname in fixed_joints] \
-                if fixed_joints is not None else []
-    # Ugly code to resize model and q0
-    rmodel, [gmodel_col, gmodel_vis] = pin.buildReducedModel(
-            robot.model, [robot.collision_model, robot.visual_model],
-            fixed_jids, robot.q0,
-        )
-
-    robot = pin.RobotWrapper(rmodel, gmodel_col, gmodel_vis)
-    fixed_jids_min_universe = np.array(fixed_jids) - 1
-    selected_jids = np.array([i for i in range(len(q0_full)) if i not in fixed_jids_min_universe])
-    robot.q0 = q0_full[selected_jids]
-
-    return robot
+from robot_utils import freezed_robot
 
 
 class SimuProxy:
     def __init__(self):
         self.readyForSimu = False
 
-        # state variables
-        pass
-    
-    def init(self, dt_sim, robot_name, fixed_joint_names=None, visual=True):
+    def init(self, dt_sim: float, robot_name: str, fixed_joint_names: list[str] = None, visual: bool = True):
         self.loadRobotFromErd(robot_name)
         pyb_mode = pyb.GUI if visual else pyb.DIRECT
         self.loadBulletModel(dt_sim, guiOpt=pyb_mode)
@@ -271,9 +242,9 @@ class SimuProxy:
         q = x[:self.robot.model.nq]
         self.robot.framesForwardKinematics(q)
         self.robot.computeJointJacobians(q)
-        pin.updateFramePlacements(self.robot.model, self.robot.data)
-        Jf = pin.getFrameJacobian(
-            self.robot.model, self.robot.data, self.robot.model.getFrameId(ee_frame), rf_frame)
+        r = self.robot
+        pin.updateFramePlacements(r.model, r.data)
+        Jf = pin.getFrameJacobian(r.model, r.data, r.model.getFrameId(ee_frame), rf_frame)
         
         # The torques from different forces accumulate
         self.tau_fext += Jf.T @ f

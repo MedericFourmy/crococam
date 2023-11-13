@@ -9,76 +9,78 @@ from gviewer_mpc import GviewerMpc
 
 np.set_printoptions(precision=4, linewidth=180)
 
-from ocp_reaching import OCP 
+from ocp_def import OCP, ConfigOCP
+from robot_utils import create_panda
 
 GVIEWER_REPLAY = True
-PLOT = False
+PLOT = True
 
-robot_name = 'panda'
-robot = load(robot_name)
-ee_name = 'panda_link8'
-fixed_indexes = []
-fixed_joints =  [f'panda_joint{i}' for i in fixed_indexes] + ['panda_finger_joint1', 'panda_finger_joint2']
-# fixed_joints = None
-robot = freezed_robot(robot, fixed_joints)
+DELTA_TRANS = np.array([-0.30, -0.3, 0.1])
+# DELTA_TRANS = np.zeros(3)
 
-# delta_trans = np.array([0.0, 0.0, 0.0])
-# delta_trans = np.array([0.0, 0.0, 0.4])
-delta_trans = np.array([0.2, 0.2, 0.1])
+robot = create_panda()
 
 
 # Simulation
-# N_SIM = 5000
-N_SIM = 3000
+SIM_SLEEP = False
+N_SIM = 10000
 # DT_SIM = 1/240  # pybullet default
-DT_SIM = 1e-3
+DT_SIM = 1/1000
+SIGMA_TAU = 0.0  # control noise
 
-# Number of shooting nodes
-T = 100
-# shooting nodes integration dt
-DT_OCP = 1e-2  # seconds
-MAX_ITER=1
+
+# Def the OCP
+cfg = ConfigOCP
+cfg.ee_name = 'panda_hand'
+cfg.w_frame_terminal = 10
+cfg.w_frame_running = 1
+
+cfg.T = 50
+cfg.dt = 2e-2  # seconds
+ocp = OCP(robot.model, cfg)
+
 # Solve every...
-DT_DDP_SOLVE = 1e-2  # seconds
+DT_DDP_SOLVE = 4*cfg.dt  # seconds
 PRINT_EVERY = 500
 SOLVE_EVERY = int(DT_DDP_SOLVE/DT_SIM)
-GOAL_IS_SE3 = False
+MAX_ITER = 30
+print('SOLVE_EVERY', SOLVE_EVERY)
 
 
 # franka_control/config/start_pose.yaml
 v0 = np.zeros(robot.nv)
 x0 = np.concatenate([robot.q0, v0])
 
-ee_fid = robot.model.getFrameId(ee_name)
-oMe0 = robot.framePlacement(robot.q0, ee_fid, True)
+ee_fid = robot.model.getFrameId(cfg.ee_name)
+oMe0 = robot.framePlacement(robot.q0, ee_fid)  # FK
 oMe_goal = oMe0.copy()
-oMe_goal.translation += delta_trans
-
-ddp = OCP(robot.model, x0, ee_name, oMe_goal, T, DT_OCP, goal_is_se3=GOAL_IS_SE3, verbose=False).ddp
+oMe_goal.translation += DELTA_TRANS
 
 
 # Warm start : initial state + gravity compensation
-xs_init = [x0 for i in range(T + 1)]
-us_init = ddp.problem.quasiStatic(xs_init[:-1])
+xs_init = (cfg.T + 1)*[x0]
+us_init = ocp.ddp.problem.quasiStatic(xs_init[:-1])
+ocp.set_ee_placement_ref(oMe_goal)
+ocp.set_state_reg_ref(x0)
 # Initial solution
-success = ddp.solve(xs_init, us_init, maxiter=1, is_feasible=False)
+success = ocp.ddp.solve(xs_init, us_init, maxiter=1, is_feasible=False)
 
-qk_sim, vk_sim = robot.q0, v0
+fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 
 # Simulation
 sim = SimuProxy()
-sim.init(DT_SIM, robot_name, fixed_joints, visual=True)
+sim.init(DT_SIM, 'panda', fixed_joints, visual=True)
 sim.setState(x0)
 
 # Visualization of mpc preview
-gmpc = GviewerMpc(robot_name, 2, fixed_joints)
+# gmpc = GviewerMpc('panda', fixed_joints, nb_keyframes=4)
 
 # Force disturbance
 t1_fext, t2_fext = 1.0, 4.0
 # fext = np.array([0,30,0, 0,0,0])
-# fext = np.array([0,10,0, 0,0,0])
-fext = np.array([0,0,0, 0,0,0])
-frame_fext = "panda_link8"
+fext = np.array([0,20,0, 0,0,0])
+# fext = np.array([0,0,0, 0,0,0])
+frame_fext = "panda_hand"
 
 
 # Logs
@@ -88,6 +90,8 @@ nb_iter_solve = []
 q_sim_arr = np.zeros((N_SIM, robot.nq))
 v_sim_arr = np.zeros((N_SIM, robot.nv))
 u_ref_arr = np.zeros((N_SIM, robot.nv))
+u_ricatti_arr = np.zeros((N_SIM, robot.nv))
+u_noisy_arr = np.zeros((N_SIM, robot.nv))
 t_sim_arr = DT_SIM*np.arange(N_SIM)
 print('\n==========================')
 print('Begin simulation + control')
@@ -95,6 +99,10 @@ print('Apply force between ', t1_fext, t2_fext, ' seconds')
 print('   -> ', t1_fext/DT_SIM, t2_fext/DT_SIM, ' iterations')
 print('fext: ', fext)
 for k in range(N_SIM):
+    t1 = time.time()
+    xk = sim.getState()
+    qk_sim, vk_sim = xk[:robot.nq], xk[robot.nq:]
+
     xk_sim = np.concatenate([qk_sim, vk_sim])
 
     tk = DT_SIM*k 
@@ -104,37 +112,44 @@ for k in range(N_SIM):
 
     #  Warm start using previous solution
     if (k % SOLVE_EVERY) == 0:
-        ddp.problem.x0 = xk_sim
-        xs_init = list(ddp.xs[1:]) + [ddp.xs[-1]]  # shift solution
+        # Set fixed initial state of the tracjectory
+        ocp.ddp.problem.x0 = xk_sim
+
+        # shift the result trajectory according to solve frequency and ddp integration dt
+        shift = int(DT_DDP_SOLVE / cfg.dt)
+        xs_init = list(ocp.ddp.xs[shift:]) + shift*[ocp.ddp.xs[-1]]
         xs_init[0] = xk_sim
-        us_init = list(ddp.us[1:]) + [ddp.us[-1]]
+        us_init = list(ocp.ddp.us[shift:]) + shift*[ocp.ddp.us[-1]]
 
         # Solve
         t1 = time.time()
-        success = ddp.solve(xs_init, us_init, maxiter=MAX_ITER, is_feasible=False)
+        success = ocp.ddp.solve(xs_init, us_init, maxiter=MAX_ITER, is_feasible=False)
         t_solve.append(tk)
         dt_solve.append(1e3*(time.time() - t1))  # store milliseconds
-        nb_iter_solve.append(ddp.iter)
-    
-    # control to apply
-    u_ref_mpc = ddp.us[0]
-    xs_arr = np.array(ddp.xs)[:,:robot.nq]
-    gmpc.display_keyframes(xs_arr)
+        nb_iter_solve.append(ocp.ddp.iter)
 
+    # gmpc.display_keyframes(np.array(ocp.ddp.xs)[:,:robot.nq])
+
+    # Simulate external force
     if t1_fext < tk < t2_fext:
         sim.applyExternalForce(fext, frame_fext, rf_frame=pin.LOCAL_WORLD_ALIGNED)
     
-    sim.step(u_ref_mpc)
-    xk = sim.getState()
-    qk_sim, vk_sim = xk[:robot.nq], xk[robot.nq:]
+    # Compute Ricatti feedback
+    u_ricatti = ocp.ddp.us[0] + ocp.ddp.K[0] @ (ocp.ddp.xs[0] - xk_sim)
+    u_noisy = u_ricatti + np.random.normal(0, SIGMA_TAU)
+    sim.step(u_noisy)
+
+    delay = time.time() - t1
+    if SIM_SLEEP and delay < DT_SIM: 
+        time.sleep(DT_SIM - delay)
 
     # Logs
     t_sim_arr[k] = tk
     q_sim_arr[k,:] = qk_sim
     v_sim_arr[k,:] = vk_sim
-    u_ref_arr[k,:] = u_ref_mpc
-
-
+    u_ref_arr[k,:] = ocp.ddp.us[0]
+    u_ricatti_arr[k,:] = u_ricatti
+    u_noisy_arr[k,:] = u_noisy
 
 
 if GVIEWER_REPLAY:
@@ -144,29 +159,22 @@ if GVIEWER_REPLAY:
     robot.initViewer(loadModel=True)
 
     gui = robot.viewer.gui
-    gui.addSphere("world/target", 0.05, [0, 1, 0, 0.5])
-    gui.applyConfiguration("world/target", oMe_goal.translation.tolist() + [0, 0, 0, 1])
-    gui.addSphere("world/final", 0.05, [0, 0, 1, 0.5])
-    # solution joint trajectory
-    xs = np.array(ddp.xs)
-    q_final = xs[-1, : robot.model.nq]
-    oMe_fin = robot.framePlacement(q_final, ee_fid, True)
-    gui.applyConfiguration("world/final", oMe_fin.translation.tolist() + [0, 0, 0, 1])
-
+    gui.addXYZaxis('world/target', [1,1,1,1], 0.01, 0.05)
+    gui.applyConfiguration("world/target", list(pin.SE3ToXYZQUAT(oMe_goal)))
+    gui.addXYZaxis('world/ee_current', [1,1,1,1], 0.01, 0.05)
     # Viewer loop 
     k = 0
     while k < N_SIM:
         t1 = time.time()
         robot.display(q_sim_arr[k,:])
+        oMe = robot.framePlacement(q_sim_arr[k,:], ee_fid)
+        gui.applyConfiguration("world/ee_current", list(pin.SE3ToXYZQUAT(oMe)))
         delay = time.time() - t1
         if delay < DT_SIM: 
             time.sleep(DT_SIM - delay)
         k += 1
 
-
-print(f'# DOF, T, DT_OCP, Mean Solve: {9-len(fixed_joints)}, {T}, {DT_OCP}, {np.mean(dt_solve)}')
-
-
+print(f'# DOF, T, DT_OCP, Mean Solve: {9-len(fixed_joints)}, {cfg.T}, {cfg.dt}, {np.mean(dt_solve)}')
 
 if PLOT:
     print('\n=========')
@@ -191,18 +199,20 @@ if PLOT:
     fig.canvas.manager.set_window_title('joint_torques')
     fig.suptitle('Joint torques', size=12)
     for i in range(robot.nq):
-        axes[i].plot(t_sim_arr, u_ref_arr[:,i])
+        axes[i].plot(t_sim_arr, u_ref_arr[:,i], 'b.', label='u_ref')
+        axes[i].plot(t_sim_arr, u_ricatti_arr[:,i], 'g.', label='u_ricatti')
+        axes[i].plot(t_sim_arr, u_noisy_arr[:,i], 'r.', label='u_noisy')
+    plt.legend()
     axes[-1].set_xlabel('Time (s)', fontsize=16)
 
     ##############################
     # Solve time
     fig, axes = plt.subplots(2,1)
     fig.canvas.manager.set_window_title('solve_times')
-    axes[0].set_title('Solve times (ms)', size=12)
     axes[0].plot(t_solve, dt_solve, '.')
-    axes[1].set_title('# iterations', size=12)
+    axes[0].set_xlabel('Solve times (ms)', fontsize=16)
     axes[1].plot(t_solve, nb_iter_solve, '.')
-    axes[1].set_xlabel('Time (s)', fontsize=16)
+    axes[1].set_xlabel('# iterations', fontsize=16)
     plt.grid()
 
     ##############################

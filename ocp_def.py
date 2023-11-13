@@ -1,22 +1,42 @@
 
 
 
+from dataclasses import dataclass
 import numpy as np
 import crocoddyl as croc
+import pinocchio as pin
 
+@dataclass
+class ConfigOCP:
+    ##############
+    # Task weigths
+    ##############
+    # EE pose
+    w_frame_terminal = 100.0
+    w_frame_running = 0
+    
+    # State regularization
+    w_x_reg_running = 0.1
+    w_x_reg_terminal = 1
+    scale_q_vs_v_reg = 0.1
 
-def linear_interpolation(x, x1, x2, y1, y2):
-    return y1 + ((x - x1) / (x2 - x1)) * (y2 - y1)
+    # Control regularization
+    w_u_reg_running = 0.01
+    diag_u_reg_running = np.ones(7)
+    armature_scale = 0.0  # creates instabilities
 
-def tanh_interpolation(x, low, high, scale, shift=0):
-    x_norm = linear_interpolation(x, 0, len(x), scale*(-1 - shift), scale*(1 - shift))
-    return low + 0.5*high*(np.tanh(x_norm)+1)
+    ee_name = 'panda_hand'
+
+    # Number of shooting nodes
+    T = 100
+    dt = 1e-2
+
+    verbose=False
 
 
 class OCP:
 
-
-    def __init__(self, model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=True, verbose=False):
+    def __init__(self, model: pin.Model, cfg: ConfigOCP):
         # # # # # # # # # # # # # # #
         ###  SETUP croc OCP  ###
         # # # # # # # # # # # # # # #
@@ -34,88 +54,60 @@ class OCP:
 
         Default activation function is quadratic
         """
-        model = model.copy()
+        self.model = model.copy()
+        self.cfg = cfg
 
-        ee_frame_id = model.getFrameId(ee_name)
+        ee_frame_id = model.getFrameId(cfg.ee_name)
 
         # State and actuation model
-        state = croc.StateMultibody(model)
+        state = croc.StateMultibody(self.model)
         actuation = croc.ActuationModelFull(state)
 
         ###################
         # Create cost terms
 
         # end translation cost: r(x_i, u_i) = translation(q_i) - t_ref
-        frameGoalResidual = None
-        if goal_is_se3:
-            frameGoalResidual = croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_goal)
-        else:
-            frameGoalResidual = croc.ResidualModelFrameTranslation(state, ee_frame_id, oMe_goal.translation)
+        oMe_dummy = pin.SE3.Identity()
+        frameGoalResidual = croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_dummy)
         frameGoalCost = croc.CostModelResidual(state, frameGoalResidual)
-
-
-        ##############
-        # Task weigths
-        ##############
-        # EE pose
-        # w_running_frame_low = 100
-        # w_running_frame_high = 100
-        w_frame_terminal = 100.0
-        w_running_frame_low = 0
-        w_running_frame_high = 0
-        # w_frame_terminal = 0
-        
-        # State regularization
-        w_x_reg_running = 0.1
-        w_x_reg_terminal = 1
-        scale_q_vs_v_reg = 0.1
-
-        # Control regularization
-        w_u_reg_running = 0.01
-        diag_u_reg_running = np.ones(model.nv)
-
 
         # State regularization
         diag_x_reg_running = np.array(
-            model.nq*[scale_q_vs_v_reg] + model.nv*[1.0]
+            self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
         )
         diag_x_reg_terminal = np.array(
-            model.nq*[scale_q_vs_v_reg] + model.nv*[1.0]
+            self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
         )
-
-        # w_frame_schedule = linear_interpolation(np.arange(T), 0, T-1, w_running_frame_low, w_running_frame_high)
-        w_frame_schedule = tanh_interpolation(np.arange(T), w_running_frame_low, w_running_frame_high, scale=5, shift=0.0)
-        # w_frame_schedule = tanh_interpolation(np.arange(T), w_running_frame_low, w_running_frame_high, scale=8, shift=0.0)
 
         ###############
         # Running costs
-        goal_cost_name = 'placement' if goal_is_se3 else 'translation'
         runningModel_lst = []
-        for i in range(T):
+        x0_dummy = np.zeros(self.model.nq+self.model.nv)
+        for _ in range(cfg.T):
             runningCostModel = croc.CostModelSum(state)
 
             # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
             xRegCost = croc.CostModelResidual(state, 
                                                 croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
-                                                croc.ResidualModelState(state, x0, actuation.nu))
+                                                croc.ResidualModelState(state, x0_dummy, actuation.nu))
 
             # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
             uRegCost = croc.CostModelResidual(state, 
-                                                croc.ActivationModelWeightedQuad(diag_u_reg_running**2), 
+                                                croc.ActivationModelWeightedQuad(cfg.diag_u_reg_running**2), 
                                                 croc.ResidualModelControlGrav(state, actuation.nu))
 
 
-            runningCostModel.addCost('stateReg', xRegCost, w_x_reg_running)
-            runningCostModel.addCost('ctrlRegGrav', uRegCost, w_u_reg_running)
-            runningCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_schedule[i])
+            runningCostModel.addCost('stateReg', xRegCost, cfg.w_x_reg_running)
+            runningCostModel.addCost('ctrlRegGrav', uRegCost, cfg.w_u_reg_running)
+            runningCostModel.addCost('placement', frameGoalCost, cfg.w_frame_running)
             # Create Differential Action Model (DAM), i.e. continuous dynamics and cost functions
             running_DAM = croc.DifferentialActionModelFreeFwdDynamics(
                 state, actuation, runningCostModel
             )
             # Create Integrated Action Model (IAM), i.e. Euler integration of continuous dynamics and cost
-            runningModel = croc.IntegratedActionModelEuler(running_DAM, dt)
+            runningModel = croc.IntegratedActionModelEuler(running_DAM, cfg.dt)
             # Optionally add armature to take into account actuator's inertia
-            # runningModel.differential.armature = 0.1*np.ones(model.nv)
+            runningModel.differential.armature = cfg.armature_scale*np.ones(model.nv)
 
             runningModel_lst.append(runningModel)
         
@@ -127,15 +119,15 @@ class OCP:
         terminalCostModel = croc.CostModelSum(state)
         xRegCost = croc.CostModelResidual(state, 
                                             croc.ActivationModelWeightedQuad(diag_x_reg_terminal**2), 
-                                            croc.ResidualModelState(state, x0, actuation.nu))
+                                            croc.ResidualModelState(state, x0_dummy, actuation.nu))
         # Control regularization cost: nu(x_i) = v_ee(x_i) - v_ee*
         # frameVelCost = croc.CostModelResidual(state, 
         #                                         croc.ActivationModelWeightedQuad(diag_vel_terminal**2), 
         #                                         croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
 
-        terminalCostModel.addCost('stateReg', xRegCost, w_x_reg_terminal)
-        terminalCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_terminal)
-        # terminalCostModel.addCost('terminal_vel', frameVelCost, w_frame_vel_terminal)
+        terminalCostModel.addCost('stateReg', xRegCost, cfg.dt*cfg.w_x_reg_terminal)
+        terminalCostModel.addCost('placement', frameGoalCost, cfg.dt*cfg.w_frame_terminal)
+        # terminalCostModel.addCost('terminal_vel', frameVelCost, cfg.dt*cfg.w_frame_vel_terminal)
 
 
         terminal_DAM = croc.DifferentialActionModelFreeFwdDynamics(
@@ -143,12 +135,37 @@ class OCP:
         )
         terminalModel = croc.IntegratedActionModelEuler(terminal_DAM, 0.0)
         # Optionally add armature to take into account actuator's inertia
-        # terminalModel.differential.armature = 0.1*np.ones(model.nv)
+        terminalModel.differential.armature = cfg.armature_scale*np.ones(model.nv)
 
         # Create the shooting problem
-        problem = croc.ShootingProblem(x0, runningModel_lst, terminalModel)
+        problem = croc.ShootingProblem(x0_dummy, runningModel_lst, terminalModel)
 
         # Create solver + callbacks
         self.ddp = croc.SolverFDDP(problem)
-        if verbose:
+        if cfg.verbose:
             self.ddp.setCallbacks([croc.CallbackLogger(), croc.CallbackVerbose()])
+
+    def quasistatic_init(self, x0):
+        # Warm start : initial state + gravity compensation
+        xs_init = (self.cfg.T + 1)*[x0]
+        us_init = self.ddp.problem.quasiStatic(xs_init[:-1])
+        return xs_init, us_init
+
+    def set_ref(self, cost_name: str, ref):
+        for i in range(self.cfg.T):
+            running_costs_i = self.ddp.problem.runningModels[i].differential.costs
+            running_costs_i.costs[cost_name].cost.residual.reference = ref
+            running_costs_i.changeCostStatus(cost_name, True)
+
+        terminal_costs = self.ddp.problem.terminalModel.differential.costs
+        terminal_costs.costs[cost_name].cost.residual.reference = ref
+        terminal_costs.changeCostStatus(cost_name, True)
+
+    def set_ee_placement_ref(self, oMe: pin.SE3):
+        assert isinstance(oMe, pin.SE3)
+        self.set_ref('placement', oMe)
+
+    def set_state_reg_ref(self, x0: np.ndarray):
+        assert isinstance(x0, np.ndarray)
+        assert len(x0) == self.model.nq + self.model.nv 
+        self.set_ref('stateReg', x0)
