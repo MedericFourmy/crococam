@@ -4,7 +4,7 @@ import pinocchio as pin
 
 class LoggerMPC:
 
-    def __init__(self, dt_sys) -> None:
+    def __init__(self, dt_sys: float) -> None:
         self.dt_syst = dt_sys
 
         # Logs:
@@ -22,7 +22,7 @@ class LoggerMPC:
             'pose_oe_goal': [],
         }
     
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         return self.logs[key]
 
     def append(self, d: dict):
@@ -37,7 +37,7 @@ class LoggerMPC:
             self.logs[k] = np.array(v)
 
 
-def plot_states(logs, nq, x_lower=None, x_upper=None):
+def plot_states(logs: LoggerMPC, nq: int, x_lower: np.ndarray = None, x_upper: np.ndarray = None):
     fig, axes = plt.subplots(nq,2)
     fig.canvas.manager.set_window_title('States')
     fig.suptitle('State trajectories (q,v)', size=18)
@@ -62,7 +62,7 @@ def plot_states(logs, nq, x_lower=None, x_upper=None):
     axes[-1,1].set_xlabel('Time (s)', fontsize=16)
 
 
-def plot_controls(logs, nv):
+def plot_controls(logs: LoggerMPC, nv: int):
     fig, axes = plt.subplots(nv,1)
     fig.canvas.manager.set_window_title('Torques')
     fig.suptitle('Joint torques', size=12)
@@ -74,7 +74,7 @@ def plot_controls(logs, nv):
     axes[-1].set_xlabel('Time (s)', fontsize=16)
 
 
-def plot_solver(logs):
+def plot_solver(logs: LoggerMPC):
     fig, axes = plt.subplots(2,1)
     fig.canvas.manager.set_window_title('Solver')
     axes[0].plot(logs['t_solve'], 1e3*logs['dt_solve'], '.')
@@ -85,7 +85,7 @@ def plot_solver(logs):
     axes[1].grid()
 
 
-def plot_end_effector(logs, robot, ee_fid):
+def plot_end_effector_pose(logs: LoggerMPC, robot: pin.RobotWrapper, ee_fid: int):
     oMe_lst = [robot.framePlacement(q, ee_fid, True) for q in logs['q']]
     oMe_goal_lst = [pin.XYZQUATToSE3(pose) for pose in logs['pose_oe_goal']]
 
@@ -95,7 +95,7 @@ def plot_end_effector(logs, robot, ee_fid):
     o_oe_goal_arr = np.rad2deg(np.array([pin.log3(M.rotation) for M in oMe_goal_lst]))
 
     fig, axes = plt.subplots(3,2)
-    fig.canvas.manager.set_window_title('End effector')
+    fig.canvas.manager.set_window_title('End effector pose')
     fig.suptitle('End effector trajectories (position,orientation)', size=18)
     for i in range(3):
         l = 'xyz'[i]
@@ -110,9 +110,32 @@ def plot_end_effector(logs, robot, ee_fid):
     plt.legend()
 
 
+def plot_end_effector_vel(logs: LoggerMPC, robot: pin.RobotWrapper, ee_fid: int):
+    nu_arr = np.array([robot.frameVelocity(q, v, ee_fid, True, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED).vector 
+                       for q, v in zip(logs['q'],logs['v'])])
+
+    fig, axes = plt.subplots(3,2)
+    fig.canvas.manager.set_window_title('End effector vel')
+    fig.suptitle('End effector velocities (linear,angular)', size=18)
+    for i in range(3):
+        l = 'xyz'[i]
+        axes[i,0].plot(logs['t'], nu_arr[:,i], f'.b', label=f'v{l}_c')
+        axes[i,0].set_ylabel('m/s')
+        axes[i,0].grid()
+        axes[i,1].plot(logs['t'], np.rad2deg(nu_arr[:,3+i]), f'.b', label=f'w{l}_c')
+        axes[i,1].set_ylabel('deg/s')
+        axes[i,1].grid()
+    axes[-1,0].set_xlabel('Time (s)', fontsize=16)
+    axes[-1,1].set_xlabel('Time (s)', fontsize=16)
+    plt.legend()
 
 
 
+        
+        
+        
+        
+        
         
         
         

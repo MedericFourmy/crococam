@@ -177,6 +177,7 @@ if PLOT:
     import matplotlib.pyplot as plt
     log_and_plot.plot_solver(logs)
     log_and_plot.plot_controls(logs, robot.nv)
-    log_and_plot.plot_end_effector(logs, robot, ee_fid)
+    log_and_plot.plot_end_effector_pose(logs, robot, ee_fid)
+    log_and_plot.plot_end_effector_vel(logs, robot, ee_fid)
     log_and_plot.plot_states(logs, robot.nq, x_lower=ocp.x_limits_lower, x_upper=ocp.x_limits_upper)
     plt.show()
