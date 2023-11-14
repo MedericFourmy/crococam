@@ -196,13 +196,11 @@ class SimuProxy:
     def step(self, torques):
         assert self.readyForSimu
 
-        # Incorporate torques due to external forces
-        torques += self.tau_fext
         pyb.setJointMotorControlArray(
             self.robotId,
             self.bulletCtrlJointsInPinOrder,
             controlMode=pyb.TORQUE_CONTROL,
-            forces=torques,
+            forces=torques + self.tau_fext,
         )
         pyb.stepSimulation()
 

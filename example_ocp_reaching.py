@@ -43,7 +43,7 @@ x0 = np.concatenate([robot.q0, np.zeros(robot.model.nv)])
 xs_init, us_init = ocp.quasistatic_init(x0)
 ocp.set_ee_placement_ref(oMe_goal)
 ocp.set_state_reg_ref(x0)
-ocp.ddp.problem.x0 = x0
+ocp.set_initial_state(x0)
 ocp.ddp.solve(xs_init, us_init, maxiter=50, is_feasible=False)
 print("Iteration #:", ocp.ddp.iter)
 

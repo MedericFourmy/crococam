@@ -108,7 +108,8 @@ class OCP:
 
             # Joint limits cost
             jointLimitCost = croc.CostModelResidual(state, 
-                                                    croc.ActivationModelQuadraticBarrier(bounds), 
+                                                    croc.ActivationModel2NormBarrier(14, 0.1), 
+                                                    # croc.ActivationModelQuadraticBarrier(bounds), 
                                                     croc.ResidualModelState(state, actuation.nu))
 
             runningCostModel.addCost('stateReg', xRegCost, cfg.w_x_reg_running)
@@ -171,6 +172,9 @@ class OCP:
         xs_init = (self.cfg.T + 1)*[x0]
         us_init = self.ddp.problem.quasiStatic(xs_init[:-1])
         return xs_init, us_init
+    
+    def set_initial_state(self, x0):
+        self.ddp.problem.x0 = x0
 
     def set_ref(self, cost_name: str, ref):
         for i in range(self.cfg.T):

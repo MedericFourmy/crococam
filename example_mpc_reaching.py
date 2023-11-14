@@ -12,7 +12,7 @@ np.set_printoptions(precision=4, linewidth=180)
 from ocp_def import OCP, ConfigOCP
 from robot_utils import create_panda
 
-GVIEWER_REPLAY = True
+GVIEWER_REPLAY = False
 PLOT = True
 
 DELTA_TRANS = np.array([-0.30, -0.3, 0.1])
@@ -24,11 +24,10 @@ robot = create_panda()
 # Simulation
 SIM_SLEEP = False
 DISABLE_JOINT_LIMITS = False
-N_SIM = 10000
+N_SIM = 20000
 # DT_SIM = 1/240  # pybullet default
 DT_SIM = 1/1000
 SIGMA_TAU = 0.0  # control noise
-
 
 # Def the OCP
 cfg = ConfigOCP
@@ -37,16 +36,15 @@ cfg.w_frame_terminal = 10
 cfg.w_frame_running = 1
 cfg.w_joint_limits_running = 1000.0
 cfg.w_joint_limits_terminal = 1000.0
-
 cfg.T = 50
 cfg.dt = 2e-2  # seconds
 ocp = OCP(robot.model, cfg)
 
 # Solve every...
-DT_DDP_SOLVE = 4*cfg.dt  # seconds
+DT_DDP_SOLVE = 10*cfg.dt  # seconds
 PRINT_EVERY = 500
 SOLVE_EVERY = int(DT_DDP_SOLVE/DT_SIM)
-MAX_ITER = 30
+MAX_ITER = 1
 print('SOLVE_EVERY', SOLVE_EVERY)
 
 ee_fid = robot.model.getFrameId(cfg.ee_name)
@@ -109,7 +107,7 @@ for k in range(N_SIM):
     #  Warm start using previous solution
     if (k % SOLVE_EVERY) == 0:
         # Set fixed initial state of the tracjectory
-        ocp.ddp.problem.x0 = xk_sim
+        ocp.set_initial_state(xk_sim)
 
         # shift the result trajectory according to solve frequency and ddp integration dt
         shift = int(DT_DDP_SOLVE / cfg.dt)
@@ -132,7 +130,7 @@ for k in range(N_SIM):
     
     # Compute Ricatti feedback
     u_ricatti = ocp.ddp.us[0] + ocp.ddp.K[0] @ (ocp.ddp.xs[0] - xk_sim)
-    u_noisy = u_ricatti + np.random.normal(0, SIGMA_TAU)
+    u_noisy = u_ricatti.copy() + np.random.normal(0, SIGMA_TAU*np.ones(robot.nv))
     sim.step(u_noisy)
 
     delay = time.time() - t1
@@ -172,6 +170,8 @@ if GVIEWER_REPLAY:
 
 print(f'# DOF, T, DT_OCP, Mean Solve: {9-len(fixed_joints)}, {cfg.T}, {cfg.dt}, {np.mean(dt_solve)}')
 
+
+
 if PLOT:
     print('\n=========')
     print('Plot traj')
@@ -187,7 +187,6 @@ if PLOT:
         axes[i,1].plot(t_sim_arr, v_sim_arr[:,i])
     axes[-1,0].set_xlabel('Time (s)', fontsize=16)
     axes[-1,1].set_xlabel('Time (s)', fontsize=16)
-
 
     ##############################
     # Controls
@@ -233,10 +232,5 @@ if PLOT:
     plt.legend()
     axes[-1,0].set_xlabel('Time (s)', fontsize=16)
     axes[-1,1].set_xlabel('Time (s)', fontsize=16)
-
-    # o_nu_e_lst = [robot.frameVelocity(q, v, ee_fid, True, pin.LOCAL_WORLD_ALIGNED) 
-    #             for q, v in zip(q_sim_arr, v_sim_arr)]
-
-
 
     plt.show()
