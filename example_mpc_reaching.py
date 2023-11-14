@@ -15,13 +15,13 @@ GVIEWER_REPLAY = True
 PLOT = True
 
 # Goal
-RANDOM_REF_EVERY = 2000
+RANDOM_REF_EVERY = 3000
 DELTA_TRANS = 0.9*np.array([0.2, 0.2, 0.1])
 DELTA_ORIENTATION = 30*np.array([1, 1, 1])  # degs
 
 # Simulation
 SEED = 0
-N_SIM = 10000
+N_SIM = 20000
 SIM_SLEEP = False
 DISABLE_JOINT_LIMITS = True
 DT_SIM = 1/1000
@@ -41,7 +41,7 @@ robot = create_panda()
 # Def the OCP
 cfg = ConfigOCP
 cfg.ee_name = 'panda_hand'
-cfg.w_frame_terminal = 1000
+cfg.w_frame_terminal = 100
 cfg.w_frame_running = 10
 cfg.w_joint_limits_running = 100.0
 cfg.w_joint_limits_terminal = 100.0
@@ -67,8 +67,9 @@ x0 = np.concatenate([robot.q0, np.zeros(robot.model.nv)])
 xs_init, us_init = ocp.quasistatic_init(x0)
 ocp.set_ee_placement_ref(oMe_goal)
 ocp.set_state_reg_ref(x0)
+ocp.set_initial_state(x0)
 # Initial solution
-success = ocp.ddp.solve(xs_init, us_init, maxiter=1, is_feasible=False)
+ocp.safe_solve(xs_init, us_init, maxiter=100, is_feasible=False)
 
 fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 
@@ -118,7 +119,8 @@ for k in range(N_SIM):
 
         # Solve
         t_solve1 = time.time()
-        success = ocp.ddp.solve(xs_init, us_init, maxiter=MAX_ITER, is_feasible=False)
+        ocp.safe_solve(xs_init, us_init, maxiter=MAX_ITER, is_feasible=False)
+        
         # Log
         logs.append({
             't_solve': tk,

@@ -13,6 +13,7 @@ class ConfigOCP:
     ##############
     w_frame_terminal = 100.0
     w_frame_running = 1
+    diag_ee_pose = np.ones(6)
 
     w_frame_vel_running = 1.0
     w_frame_vel_terminal = 1.0
@@ -47,6 +48,7 @@ class OCP:
         # # # # # # # # # # # # # # #
         ###  SETUP croc OCP  ###
         # # # # # # # # # # # # # # #
+        self.proper_pbe = False
 
         self.model = model.copy()
         x0_dummy = np.zeros(self.model.nq+self.model.nv)
@@ -70,9 +72,9 @@ class OCP:
 
         # end translation cost: r(x_i, u_i) = translation(q_i) - t_ref
         oMe_dummy = pin.SE3.Identity()
-        frameGoalResidual = croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_dummy)
-        frameGoalCost = croc.CostModelResidual(state, frameGoalResidual)
-
+        frameGoalCost = croc.CostModelResidual(state, 
+                                               croc.ActivationModelWeightedQuad(cfg.diag_ee_pose**2), 
+                                               croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_dummy))
         frameVelCost = croc.CostModelResidual(state, 
                                               croc.ActivationModelWeightedQuad(cfg.diag_ee_vel**2), 
                                               croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
@@ -110,7 +112,10 @@ class OCP:
             runningCostModel.addCost('placement', frameGoalCost, cfg.w_frame_running)
             runningCostModel.addCost('jointLimit', jointLimitCost, cfg.w_joint_limits_running)
             runningCostModel.addCost('ee_vel', frameVelCost, cfg.w_frame_vel_running)
-            
+            # At this point, dummy values, not safe!
+            runningCostModel.changeCostStatus('xRegCost', False)
+            runningCostModel.changeCostStatus('placement', False)
+    
             # DAM: Continuous cost functions with continuous dynamics
             # IAE: Euler integration of continuous dynamics
             running_DAM = croc.DifferentialActionModelFreeFwdDynamics(state, actuation, runningCostModel)
@@ -137,6 +142,9 @@ class OCP:
         terminalCostModel.addCost('placement', frameGoalCost,   cfg.dt*cfg.w_frame_terminal)
         terminalCostModel.addCost('jointLimit', jointLimitCost, cfg.dt*cfg.w_joint_limits_terminal)
         terminalCostModel.addCost('ee_vel', frameVelCost,       cfg.dt*cfg.w_frame_vel_terminal)
+        # At this point, dummy values, not safe!
+        terminalCostModel.changeCostStatus('xRegCost', False)
+        terminalCostModel.changeCostStatus('placement', False)
 
         terminal_DAM = croc.DifferentialActionModelFreeFwdDynamics(
             state, actuation, terminalCostModel
@@ -154,6 +162,12 @@ class OCP:
         if cfg.verbose:
             self.ddp.setCallbacks([croc.CallbackLogger(), croc.CallbackVerbose()])
 
+    def safe_solve(self, xs_init, us_init, maxiter, is_feasible):
+        if not self.proper_pbe:
+            raise RuntimeError('DDP problem was not setup properly, some mandatory costs are not active') 
+
+        return self.ddp.solve(xs_init, us_init, maxiter, is_feasible)
+
     def quasistatic_init(self, x0):
         # Warm start : initial state + gravity compensation
         xs_init = (self.cfg.T + 1)*[x0]
@@ -162,7 +176,7 @@ class OCP:
     
     def set_initial_state(self, x0):
         self.ddp.problem.x0 = x0
-
+    
     def set_ref(self, cost_name: str, ref):
         for i in range(self.cfg.T):
             running_costs_i = self.ddp.problem.runningModels[i].differential.costs
@@ -175,9 +189,11 @@ class OCP:
 
     def set_ee_placement_ref(self, oMe: pin.SE3):
         assert isinstance(oMe, pin.SE3)
+        self.proper_pbe = True
         self.set_ref('placement', oMe)
 
     def set_state_reg_ref(self, x0: np.ndarray):
         assert isinstance(x0, np.ndarray)
         assert len(x0) == self.model.nq + self.model.nv 
+        self.proper_pbe = True
         self.set_ref('stateReg', x0)
