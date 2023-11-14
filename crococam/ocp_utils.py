@@ -5,7 +5,7 @@ Comes from https://github.com/skleff1994/minimal_examples_crocoddyl
 import numpy as np
 import pinocchio as pin
 import matplotlib.pyplot as plt
-import pin_utils
+from crococam import pin_utils
 
 
 # Extract data from solver 

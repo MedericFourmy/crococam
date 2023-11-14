@@ -1,22 +1,11 @@
-"""
-Example script : Crocoddyl OCP with Panda arm 
-static target reaching task
-
-Directly inspired by https://github.com/skleff1994/minimal_examples_crocoddyl/blob/master/ocp_kuka_reaching.py
-
-# Questions:
-- How to update reference translation without rebuilding another ddp problem?
--> ddp.problem.terminalModel.differential.costs.costs['placement'].cost.residual.reference.translation = new_ref?
-"""
 
 import numpy as np
 np.set_printoptions(precision=4, linewidth=180)
 import pinocchio as pin
-from example_robot_data import load
-import ocp_utils
 
-from ocp_def import OCP, ConfigOCP
-from robot_utils import create_panda
+from crococam import ocp_utils
+from crococam.ocp_def import OCP, ConfigOCP
+from crococam.robot_utils import create_panda
 
 GVIEWER = True
 PLOT = True

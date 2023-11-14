@@ -3,12 +3,11 @@ Comes from https://github.com/skleff1994/minimal_examples_crocoddyl
 """
 
 
-import numpy as np
-import pinocchio as pin
-import eigenpy
-from numpy.linalg import pinv
 import time
-import matplotlib.pyplot as plt
+import numpy as np
+import eigenpy
+import pinocchio as pin
+from numpy.linalg import pinv
 
 
 # Rotate placement

@@ -1,0 +1,20 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core"]
+
+[tool.poetry]
+authors = ["Médéric Fourmy"]
+description = "crococam proposes an implementation of an MPC controller for panda manipulator using crocoddyl for visual feedback control"
+license = "BSD-2-Clause"
+name = "crococam"
+readme = "README.md"
+version = "0.1.0"
+packages = [{include = "crococam"}]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.11"
+pin = ">=2.6.20"
+crocoddyl = ">=2.0.0"
+pybullet = ">=3.0.0"
+matplotlib = ">=3.0.0"
+

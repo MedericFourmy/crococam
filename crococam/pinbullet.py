@@ -11,7 +11,8 @@ import pybullet as pyb
 import pybullet_data
 import numpy as np
 import example_robot_data as robex
-from robot_utils import freezed_robot
+
+from crococam.robot_utils import freezed_robot
 
 
 class SimuProxy:

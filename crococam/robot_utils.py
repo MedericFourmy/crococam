@@ -1,6 +1,6 @@
-from example_robot_data import load
-import pinocchio as pin
 import numpy as np
+import pinocchio as pin
+from example_robot_data import load
 
 
 

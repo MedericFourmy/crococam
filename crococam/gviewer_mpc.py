@@ -1,7 +1,8 @@
 import numpy as np
 import pinocchio as pin
 from example_robot_data import load
-from pinbullet import freezed_robot
+
+from crococam.pinbullet import freezed_robot
 
 class GviewerMpc:
 

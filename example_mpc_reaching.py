@@ -1,13 +1,14 @@
 
 import time
 import numpy as np
-import pinocchio as pin
-from pinbullet import SimuProxy
-from gviewer_mpc import GviewerMpc
 np.set_printoptions(precision=4, linewidth=180)
-from ocp_def import OCP, ConfigOCP
-from robot_utils import create_panda
-import log_and_plot
+import pinocchio as pin
+
+from crococam.pinbullet import SimuProxy
+from crococam.gviewer_mpc import GviewerMpc
+from crococam.ocp_def import OCP, ConfigOCP
+from crococam.robot_utils import create_panda
+from crococam import log_and_plot
 
 
 GVIEWER_REPLAY = True
