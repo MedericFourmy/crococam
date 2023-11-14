@@ -22,7 +22,7 @@ GVIEWER = True
 PLOT = True
 
 # DELTA_TRANS = np.array([-0.20, -0.3, 0.1])
-DELTA_TRANS = np.array([-0.80, -0.35, -0.5])  # puts itself in limit
+DELTA_TRANS = np.array([-0.80, -0.35, -0.5])  # puts itself in limit if no joint limit cost
 
 robot = create_panda()
 
@@ -32,6 +32,8 @@ cfg.ee_name = 'panda_hand'
 cfg.w_frame_running = 10
 cfg.w_joint_limits_running = 1000.0
 cfg.w_joint_limits_terminal = 1000.0
+cfg.w_frame_vel_running = 0.0
+cfg.w_frame_vel_terminal = 0.0 
 cfg.T = 100
 cfg.dt = 1e-2  # seconds
 ocp = OCP(robot.model, cfg)

@@ -11,18 +11,21 @@ class ConfigOCP:
     ##############
     # Task weigths
     ##############
-    # EE pose
     w_frame_terminal = 100.0
-    w_frame_running = 0
-    
+    w_frame_running = 1
+
+    w_frame_vel_running = 1.0
+    w_frame_vel_terminal = 1.0
+    diag_ee_vel = np.ones(6)
+
     # State regularization
     w_x_reg_running = 0.1
     w_x_reg_terminal = 1
     scale_q_vs_v_reg = 0.1
 
     # Control regularization
-    w_u_reg_running = 0.01
-    diag_u_reg_running = np.ones(7)
+    w_u_reg = 0.01
+    diag_u_reg = np.ones(7)
     armature_scale = 0.0  # creates instabilities
 
     # Joint limits
@@ -45,20 +48,8 @@ class OCP:
         ###  SETUP croc OCP  ###
         # # # # # # # # # # # # # # #
 
-        """
-        Objects we need to define
-
-        CostModelResidual defines a cost model as cost = a(r(x,u)) where
-        r is a residual function, a is an activation model
-
-        The class (as other Residual types) implements:
-        - calc: computes the residual function
-        - calcDiff: computes the residual derivatives
-        Results are stored in a ResidualDataAbstract
-
-        Default activation function is quadratic
-        """
         self.model = model.copy()
+        x0_dummy = np.zeros(self.model.nq+self.model.nv)
         self.cfg = cfg
 
         ee_frame_id = model.getFrameId(cfg.ee_name)
@@ -73,58 +64,59 @@ class OCP:
         print('self.x_limits_lower:',self.x_limits_lower)
         print('self.x_limits_upper:',self.x_limits_upper)
         bounds = croc.ActivationBounds(self.x_limits_lower, self.x_limits_upper, beta=1)
-        ###################
-        # Create cost terms
+
+        ################################################
+        # Cost terms common between running and terminal 
 
         # end translation cost: r(x_i, u_i) = translation(q_i) - t_ref
         oMe_dummy = pin.SE3.Identity()
         frameGoalResidual = croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_dummy)
         frameGoalCost = croc.CostModelResidual(state, frameGoalResidual)
 
-        # State regularization
+        frameVelCost = croc.CostModelResidual(state, 
+                                              croc.ActivationModelWeightedQuad(cfg.diag_ee_vel**2), 
+                                              croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
+
+        # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
+        uRegCost = croc.CostModelResidual(state, 
+                                            croc.ActivationModelWeightedQuad(cfg.diag_u_reg**2), 
+                                            croc.ResidualModelControlGrav(state, actuation.nu))
+
+        # Joint limits cost
+        jointLimitCost = croc.CostModelResidual(state, 
+                                                croc.ActivationModelQuadraticBarrier(bounds), 
+                                                croc.ResidualModelState(state, actuation.nu))
+        ###################
+
+
+        ###################
+        # Running only
+        # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
         diag_x_reg_running = np.array(
             self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
         )
-        diag_x_reg_terminal = np.array(
-            self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
-        )
+        xRegCost = croc.CostModelResidual(state, 
+                                            croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
+                                            croc.ResidualModelState(state, x0_dummy, actuation.nu))
+        ###################
 
         ###############
         # Running costs
         runningModel_lst = []
-        x0_dummy = np.zeros(self.model.nq+self.model.nv)
         for _ in range(cfg.T):
             runningCostModel = croc.CostModelSum(state)
-
-            # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
-            xRegCost = croc.CostModelResidual(state, 
-                                              croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
-                                              croc.ResidualModelState(state, x0_dummy, actuation.nu))
-
-            # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
-            uRegCost = croc.CostModelResidual(state, 
-                                              croc.ActivationModelWeightedQuad(cfg.diag_u_reg_running**2), 
-                                              croc.ResidualModelControlGrav(state, actuation.nu))
-
-            # Joint limits cost
-            jointLimitCost = croc.CostModelResidual(state, 
-                                                    croc.ActivationModel2NormBarrier(14, 0.1), 
-                                                    # croc.ActivationModelQuadraticBarrier(bounds), 
-                                                    croc.ResidualModelState(state, actuation.nu))
-
             runningCostModel.addCost('stateReg', xRegCost, cfg.w_x_reg_running)
-            runningCostModel.addCost('ctrlRegGrav', uRegCost, cfg.w_u_reg_running)
+            runningCostModel.addCost('ctrlRegGrav', uRegCost, cfg.w_u_reg)
             runningCostModel.addCost('placement', frameGoalCost, cfg.w_frame_running)
             runningCostModel.addCost('jointLimit', jointLimitCost, cfg.w_joint_limits_running)
-            # Create Differential Action Model (DAM), i.e. continuous dynamics and cost functions
-            running_DAM = croc.DifferentialActionModelFreeFwdDynamics(
-                state, actuation, runningCostModel
-            )
-            # Create Integrated Action Model (IAM), i.e. Euler integration of continuous dynamics and cost
+            runningCostModel.addCost('ee_vel', frameVelCost, cfg.w_frame_vel_running)
+            
+            # DAM: Continuous cost functions with continuous dynamics
+            # IAE: Euler integration of continuous dynamics
+            running_DAM = croc.DifferentialActionModelFreeFwdDynamics(state, actuation, runningCostModel)
             runningModel = croc.IntegratedActionModelEuler(running_DAM, cfg.dt)
-            # Optionally add armature to take into account actuator's inertia
+            # Model actuator's inertia
             runningModel.differential.armature = cfg.armature_scale*np.ones(model.nv)
-
             runningModel_lst.append(runningModel)
         
         ###############
@@ -132,25 +124,19 @@ class OCP:
         # !! weights scale has a different meaning here since
         # weights in the running cost are multiplied by dt 
         ###############
-        terminalCostModel = croc.CostModelSum(state)
+        
+        diag_x_reg_terminal = np.array(
+            self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
+        )
         xRegCost = croc.CostModelResidual(state, 
-                                            croc.ActivationModelWeightedQuad(diag_x_reg_terminal**2), 
-                                            croc.ResidualModelState(state, x0_dummy, actuation.nu))
-        # Control regularization cost: nu(x_i) = v_ee(x_i) - v_ee*
-        # frameVelCost = croc.CostModelResidual(state, 
-        #                                         croc.ActivationModelWeightedQuad(diag_vel_terminal**2), 
-        #                                         croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
-
-        # Joint limits cost
-        jointLimitCost = croc.CostModelResidual(state, 
-                                                croc.ActivationModelQuadraticBarrier(bounds), 
-                                                croc.ResidualModelState(state, actuation.nu))
-
-        terminalCostModel.addCost('stateReg', xRegCost, cfg.dt*cfg.w_x_reg_terminal)
-        terminalCostModel.addCost('placement', frameGoalCost, cfg.dt*cfg.w_frame_terminal)
+                                          croc.ActivationModelWeightedQuad(diag_x_reg_terminal**2), 
+                                          croc.ResidualModelState(state, x0_dummy, actuation.nu))
+        
+        terminalCostModel = croc.CostModelSum(state)
+        terminalCostModel.addCost('stateReg', xRegCost,         cfg.dt*cfg.w_x_reg_terminal)
+        terminalCostModel.addCost('placement', frameGoalCost,   cfg.dt*cfg.w_frame_terminal)
         terminalCostModel.addCost('jointLimit', jointLimitCost, cfg.dt*cfg.w_joint_limits_terminal)
-        # terminalCostModel.addCost('terminal_vel', frameVelCost, cfg.dt*cfg.w_frame_vel_terminal)
-
+        terminalCostModel.addCost('ee_vel', frameVelCost,       cfg.dt*cfg.w_frame_vel_terminal)
 
         terminal_DAM = croc.DifferentialActionModelFreeFwdDynamics(
             state, actuation, terminalCostModel
@@ -158,6 +144,7 @@ class OCP:
         terminalModel = croc.IntegratedActionModelEuler(terminal_DAM, 0.0)
         # Optionally add armature to take into account actuator's inertia
         terminalModel.differential.armature = cfg.armature_scale*np.ones(model.nv)
+        ###############
 
         # Create the shooting problem
         problem = croc.ShootingProblem(x0_dummy, runningModel_lst, terminalModel)

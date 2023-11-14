@@ -16,7 +16,7 @@ PLOT = True
 
 # Goal
 RANDOM_REF_EVERY = 2000
-DELTA_TRANS = 1*np.array([0.2, 0.2, 0.1])
+DELTA_TRANS = 0.9*np.array([0.2, 0.2, 0.1])
 DELTA_ORIENTATION = 30*np.array([1, 1, 1])  # degs
 
 # Simulation
@@ -25,7 +25,7 @@ N_SIM = 10000
 SIM_SLEEP = False
 DISABLE_JOINT_LIMITS = True
 DT_SIM = 1/1000
-SIGMA_TAU = 0.0  # control noise
+SIGMA_TAU = 0.05  # control noise
 
 np.random.seed(SEED)
 
@@ -43,8 +43,11 @@ cfg = ConfigOCP
 cfg.ee_name = 'panda_hand'
 cfg.w_frame_terminal = 1000
 cfg.w_frame_running = 10
-cfg.w_joint_limits_running = 1000.0
-cfg.w_joint_limits_terminal = 1000.0
+cfg.w_joint_limits_running = 100.0
+cfg.w_joint_limits_terminal = 100.0
+cfg.w_frame_vel_running = 0.1
+cfg.w_frame_vel_terminal = 0.1
+cfg.diag_ee_vel = np.array(3*[1]+3*[10])
 cfg.T = 50
 cfg.dt = 2e-2  # seconds
 ocp = OCP(robot.model, cfg)
@@ -175,9 +178,9 @@ if GVIEWER_REPLAY:
 
 if PLOT:
     import matplotlib.pyplot as plt
+    log_and_plot.plot_end_effector_vel(logs, robot, ee_fid)
     log_and_plot.plot_solver(logs)
     log_and_plot.plot_controls(logs, robot.nv)
-    log_and_plot.plot_end_effector_pose(logs, robot, ee_fid)
-    log_and_plot.plot_end_effector_vel(logs, robot, ee_fid)
     log_and_plot.plot_states(logs, robot.nq, x_lower=ocp.x_limits_lower, x_upper=ocp.x_limits_upper)
+    log_and_plot.plot_end_effector_pose(logs, robot, ee_fid)
     plt.show()
