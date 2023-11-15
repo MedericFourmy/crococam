@@ -2,8 +2,31 @@
 Comes from https://github.com/skleff1994/minimal_examples_crocoddyl
 """
 
+from typing import Union
 import numpy as np
 import pinocchio as pin
+
+
+def perturb_placement(M: pin.SE3, sig_t: Union[float, np.ndarray], sig_deg: Union[float, np.ndarray]):
+    """
+    Perturb a placement using noise in R3xSO(3) local coordinate.
+
+    M: placement to perturb
+    sig_t: standard deviation of translation (meters), either scalar or 
+    sig_deg: standard deviation of orientation (degrees)
+    """
+    if isinstance(sig_t, float):
+        sig_t = sig_t*np.ones(3)
+    if isinstance(sig_deg, float):
+        sig_deg = sig_deg*np.ones(3)
+    
+    delta_trans = np.random.normal(0, sig_t)
+    delta_aa = np.random.normal(0, np.deg2rad(sig_deg))
+    M_pert = pin.SE3()
+    M_pert.translation = M.translation + delta_trans
+    M_pert.rotation = M.rotation @ pin.exp3(delta_aa)
+    return M_pert
+
 
 # Get frame position
 def get_p(q, pin_robot, id_endeff):

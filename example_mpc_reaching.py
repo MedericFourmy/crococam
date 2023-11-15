@@ -5,6 +5,7 @@ np.set_printoptions(precision=4, linewidth=180)
 import pinocchio as pin
 
 from crococam.pinbullet import SimuProxy
+from crococam.pin_utils import perturb_placement
 from crococam.gviewer_mpc import GviewerMpc
 from crococam.ocp_def import OCP, ConfigOCP
 from crococam.robot_utils import create_panda
@@ -17,8 +18,8 @@ PLOT = True
 
 # Goal
 RANDOM_REF_EVERY = 3000
-DELTA_TRANS = 0.9*np.array([0.2, 0.2, 0.1])
-DELTA_ORIENTATION = 30*np.array([1, 1, 1])  # degs
+SIGMA_TRANS = 0.9*np.array([0.2, 0.2, 0.1])
+SIGMA_ORIENTATION = 30*np.array([1, 1, 1])  # degs
 
 # Simulation
 SEED = 0
@@ -98,10 +99,7 @@ for k in range(N_SIM):
     tk = DT_SIM*k 
 
     if (k % RANDOM_REF_EVERY == 0):
-        delta_trans = np.random.normal(0, DELTA_TRANS)
-        delta_aa = np.random.normal(0, np.deg2rad(DELTA_ORIENTATION))
-        oMe_goal.translation = oMe0.translation + delta_trans
-        oMe_goal.rotation = oMe0.rotation @ pin.exp3(delta_aa)
+        oMe_goal = perturb_placement(oMe0, SIGMA_TRANS, SIGMA_ORIENTATION)
 
     if (k % PRINT_EVERY) == 0:
         print(f'{k}/{N_SIM}')
