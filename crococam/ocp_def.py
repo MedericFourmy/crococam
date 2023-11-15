@@ -167,6 +167,12 @@ class OCP:
             raise RuntimeError('DDP problem was not setup properly, some mandatory costs are not active') 
 
         return self.ddp.solve(xs_init, us_init, maxiter, is_feasible)
+    
+    def get_ricatti_feedback(self):
+        """
+        DDP results necessary to implement Ricatti linearization.
+        """
+        return self.ddp.us[0], self.ddp.K[0], self.ddp.xs[0]
 
     def quasistatic_init(self, x0):
         # Warm start : initial state + gravity compensation
@@ -197,3 +203,31 @@ class OCP:
         assert len(x0) == self.model.nq + self.model.nv 
         self.proper_pbe = True
         self.set_ref('stateReg', x0)
+
+
+def get_warm_start_traj(ddp: croc.SolverFDDP, 
+                        xk: np.ndarray, 
+                        dt_ddp: float, 
+                        dt_last_solve: float, 
+                        apply_zero_shift: bool = True):
+        """
+        Shift the previous optimal trajectory to get a new warm start.
+
+        Logically: use dt_last_solve and dt_ddp to compute closest 
+        integer shift, but in practice works less good than applying a 0 shift.
+        Idea: end of the trajectory is not physically consistent, would need to 
+        extrapolate states from last controls instead of simply repeating last state.
+
+        apply_zero_shift: bypasses standard behavior, does not shift the trajectory
+        """
+        if apply_zero_shift:
+            xs_warm, us_warm = ddp.xs, ddp.us
+        else:
+            shift = int(dt_last_solve / dt_ddp)
+            xs_warm = list(ddp.xs[shift:]) + shift*[ddp.xs[-1]]
+            us_warm = list(ddp.us[shift:]) + shift*[ddp.us[-1]]
+
+        # Either way, current state measurement helps in the warm-start
+        xs_warm[0] = xk
+        return xs_warm, us_warm
+
