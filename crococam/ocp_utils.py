@@ -179,6 +179,7 @@ def plot_ocp_results(DDP_DATA, which_plots='all', labels=None, markers=None, col
 
     return fig, ax
 
+
 def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., MAKE_LEGEND=False, SHOW=True, x_limits_lower=None, x_limits_upper=None):
     '''
     Plot ddp results (state)
@@ -265,6 +266,7 @@ def plot_ocp_state(ddp_data, fig=None, ax=None, label=None, marker=None, color=N
         plt.show()
     return fig, ax
 
+
 def plot_ocp_control(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., MAKE_LEGEND=False, SHOW=True):
     '''
     Plot ddp results (control)
@@ -326,6 +328,7 @@ def plot_ocp_control(ddp_data, fig=None, ax=None, label=None, marker=None, color
     if(SHOW):
         plt.show()
     return fig, ax
+
 
 def plot_ocp_endeff_linear(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., 
                                                     MAKE_LEGEND=False, SHOW=True, AUTOSCALE=True):
@@ -433,6 +436,7 @@ def plot_ocp_endeff_linear(ddp_data, fig=None, ax=None, label=None, marker=None,
         plt.show()
     return fig, ax
 
+
 def plot_ocp_endeff_angular(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., 
                                                     MAKE_LEGEND=False, SHOW=True, AUTOSCALE=False):
     '''
@@ -538,6 +542,7 @@ def plot_ocp_endeff_angular(ddp_data, fig=None, ax=None, label=None, marker=None
     if(SHOW):
         plt.show()
     return fig, ax
+
 
 def plot_ocp_force(ddp_data, fig=None, ax=None, label=None, marker=None, color=None, alpha=1., 
                                                 MAKE_LEGEND=False, SHOW=True, AUTOSCALE=True):
