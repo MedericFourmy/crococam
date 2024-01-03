@@ -17,7 +17,7 @@ class ConfigOCP:
 
     w_frame_vel_running = 1.0
     w_frame_vel_terminal = 1.0
-    diag_ee_vel = np.ones(6)
+    diag_velocity = np.ones(6)
 
     # State regularization
     w_x_reg_running = 0.1
@@ -76,7 +76,7 @@ class OCP:
                                                croc.ActivationModelWeightedQuad(cfg.diag_ee_pose**2), 
                                                croc.ResidualModelFramePlacement(state, ee_frame_id, oMe_dummy))
         frameVelCost = croc.CostModelResidual(state, 
-                                              croc.ActivationModelWeightedQuad(cfg.diag_ee_vel**2), 
+                                              croc.ActivationModelWeightedQuad(cfg.diag_velocity**2), 
                                               croc.ResidualModelFrameVelocity(state, ee_frame_id, pin.Motion.Zero(), pin.LOCAL_WORLD_ALIGNED, actuation.nu))
 
         # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
@@ -85,7 +85,7 @@ class OCP:
                                             croc.ResidualModelControlGrav(state, actuation.nu))
 
         # Joint limits cost
-        jointLimitCost = croc.CostModelResidual(state, 
+        stateLimCost = croc.CostModelResidual(state, 
                                                 croc.ActivationModelQuadraticBarrier(bounds), 
                                                 croc.ResidualModelState(state, actuation.nu))
         ###################
@@ -97,7 +97,7 @@ class OCP:
         diag_x_reg_running = np.array(
             self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
         )
-        xRegCost = croc.CostModelResidual(state, 
+        stateRegCost = croc.CostModelResidual(state, 
                                             croc.ActivationModelWeightedQuad(diag_x_reg_running**2), 
                                             croc.ResidualModelState(state, x0_dummy, actuation.nu))
         ###################
@@ -107,13 +107,13 @@ class OCP:
         runningModel_lst = []
         for _ in range(cfg.T):
             runningCostModel = croc.CostModelSum(state)
-            runningCostModel.addCost('stateReg', xRegCost, cfg.w_x_reg_running)
+            runningCostModel.addCost('stateReg', stateRegCost, cfg.w_x_reg_running)
             runningCostModel.addCost('ctrlRegGrav', uRegCost, cfg.w_u_reg)
             runningCostModel.addCost('placement', frameGoalCost, cfg.w_frame_running)
-            runningCostModel.addCost('jointLimit', jointLimitCost, cfg.w_joint_limits_running)
-            runningCostModel.addCost('ee_vel', frameVelCost, cfg.w_frame_vel_running)
+            runningCostModel.addCost('stateLim', stateLimCost, cfg.w_joint_limits_running)
+            runningCostModel.addCost('velocity', frameVelCost, cfg.w_frame_vel_running)
             # At this point, dummy values, not safe!
-            runningCostModel.changeCostStatus('xRegCost', False)
+            runningCostModel.changeCostStatus('stateReg', False)
             runningCostModel.changeCostStatus('placement', False)
     
             # DAM: Continuous cost functions with continuous dynamics
@@ -133,17 +133,17 @@ class OCP:
         diag_x_reg_terminal = np.array(
             self.model.nq*[cfg.scale_q_vs_v_reg] + self.model.nv*[1.0]
         )
-        xRegCost = croc.CostModelResidual(state, 
+        stateRegCost = croc.CostModelResidual(state, 
                                           croc.ActivationModelWeightedQuad(diag_x_reg_terminal**2), 
                                           croc.ResidualModelState(state, x0_dummy, actuation.nu))
         
         terminalCostModel = croc.CostModelSum(state)
-        terminalCostModel.addCost('stateReg', xRegCost,         cfg.dt*cfg.w_x_reg_terminal)
+        terminalCostModel.addCost('stateReg', stateRegCost,     cfg.dt*cfg.w_x_reg_terminal)
         terminalCostModel.addCost('placement', frameGoalCost,   cfg.dt*cfg.w_frame_terminal)
-        terminalCostModel.addCost('jointLimit', jointLimitCost, cfg.dt*cfg.w_joint_limits_terminal)
-        terminalCostModel.addCost('ee_vel', frameVelCost,       cfg.dt*cfg.w_frame_vel_terminal)
+        terminalCostModel.addCost('stateLim', stateLimCost, cfg.dt*cfg.w_joint_limits_terminal)
+        terminalCostModel.addCost('velocity', frameVelCost,       cfg.dt*cfg.w_frame_vel_terminal)
         # At this point, dummy values, not safe!
-        terminalCostModel.changeCostStatus('xRegCost', False)
+        terminalCostModel.changeCostStatus('stateReg', False)
         terminalCostModel.changeCostStatus('placement', False)
 
         terminal_DAM = croc.DifferentialActionModelFreeFwdDynamics(

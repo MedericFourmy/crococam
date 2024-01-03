@@ -64,7 +64,7 @@ def extract_ocp_data(ddp, ee_frame_name='contact', ct_frame_name='contact'):
       ddp_data['fs'] = [ee_forces[i] for i in range(ddp.problem.T)]
     # Extract refs for active costs 
     # TODO : active costs may change along horizon : how to deal with that when plotting? 
-    ddp_data['active_costs'] = ddp.problem.runningModels[0].differential.costs.active.tolist()
+    ddp_data['active_costs'] = ddp.problem.runningModels[0].differential.costs.active_set
     if('stateReg' in ddp_data['active_costs']):
         ddp_data['stateReg_ref'] = [ddp.problem.runningModels[i].differential.costs.costs['stateReg'].cost.residual.reference for i in range(ddp.problem.T)]
         ddp_data['stateReg_ref'].append(ddp.problem.terminalModel.differential.costs.costs['stateReg'].cost.residual.reference)
